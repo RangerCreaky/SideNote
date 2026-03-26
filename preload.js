@@ -14,6 +14,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     storeGet: (key) => ipcRenderer.invoke('store-get', key),
     storeSet: (key, value) => ipcRenderer.invoke('store-set', key, value),
 
+    // Global shortcut
+    getToggleShortcut: () => ipcRenderer.invoke('get-toggle-shortcut'),
+    setToggleShortcut: (accelerator) => ipcRenderer.invoke('set-toggle-shortcut', accelerator),
+
     // File dialogs
     showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options),
     showSaveDialog: (options) => ipcRenderer.invoke('show-save-dialog', options),
