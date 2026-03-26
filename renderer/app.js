@@ -16,8 +16,41 @@ let state = {
 let dragSourceNoteId = null;
 
 // ===== Storage via IPC =====
+function normalizeNoteFlags(note) {
+    if (!note || typeof note !== 'object') return false;
+    let changed = false;
+
+    if (typeof note.pinned !== 'boolean') {
+        note.pinned = false;
+        changed = true;
+    }
+    if (typeof note.favourite !== 'boolean') {
+        note.favourite = false;
+        changed = true;
+    }
+
+    return changed;
+}
+
+function normalizeStoredFolders(folders) {
+    if (!Array.isArray(folders)) return { folders: [], changed: true };
+
+    let changed = false;
+    folders.forEach(folder => {
+        if (!folder || !Array.isArray(folder.notes)) return;
+        folder.notes.forEach(note => {
+            if (normalizeNoteFlags(note)) changed = true;
+        });
+    });
+
+    return { folders, changed };
+}
+
 async function loadData() {
-    state.folders = (await window.electronAPI.storeGet('folders')) || [];
+    const storedFolders = (await window.electronAPI.storeGet('folders')) || [];
+    const normalized = normalizeStoredFolders(storedFolders);
+    state.folders = normalized.folders;
+    if (normalized.changed) await save();
 }
 
 async function save() {
@@ -120,6 +153,12 @@ const btnAddNote = document.getElementById('btn-add-note');
 const contextMenu = document.getElementById('context-menu');
 const formatDropdown = document.getElementById('format-dropdown');
 const resizeHandle = document.getElementById('resize-handle');
+const btnSettings = document.getElementById('btn-settings');
+const settingsView = document.getElementById('settings-view');
+const shortcutRecorder = document.getElementById('shortcut-recorder');
+const shortcutDisplay = document.getElementById('shortcut-display');
+const shortcutError = document.getElementById('shortcut-error');
+const btnResetShortcut = document.getElementById('btn-reset-shortcut');
 
 // ===== Expansion State =====
 window.electronAPI.onExpansionState((expanded) => {
@@ -196,10 +235,17 @@ searchInput.addEventListener('input', (e) => {
 });
 
 // ===== Back Button =====
+let previousView = null;
 btnBack.addEventListener('click', () => {
-    state.currentView = 'folders';
-    state.currentFolderId = null;
-    state.activeNoteId = null;
+    if (state.currentView === 'settings' && previousView) {
+        state.currentView = previousView.view;
+        state.currentFolderId = previousView.folderId;
+        previousView = null;
+    } else {
+        state.currentView = 'folders';
+        state.currentFolderId = null;
+        state.activeNoteId = null;
+    }
     renderCurrentView();
 });
 
@@ -234,6 +280,7 @@ function addNote() {
     const note = {
         id: generateId(),
         content: '',
+        favourite: false,
         pinned: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -261,6 +308,7 @@ function renderFolders() {
     btnBack.classList.add('hidden');
     folderListView.classList.remove('hidden');
     notesView.classList.add('hidden');
+    settingsView.classList.add('hidden');
 
     let folders = state.folders;
     if (state.searchQuery) {
@@ -346,10 +394,17 @@ function renderNotes() {
     const folder = state.folders.find(f => f.id === state.currentFolderId);
     if (!folder) return;
 
+    let normalizedChanged = false;
+    folder.notes.forEach(note => {
+        if (normalizeNoteFlags(note)) normalizedChanged = true;
+    });
+    if (normalizedChanged) save();
+
     topTitle.textContent = folder.name;
     btnBack.classList.remove('hidden');
     folderListView.classList.add('hidden');
     notesView.classList.remove('hidden');
+    settingsView.classList.add('hidden');
 
     let notes = [...folder.notes];
 
@@ -357,7 +412,14 @@ function renderNotes() {
         notes = notes.filter(n => n.content.toLowerCase().includes(state.searchQuery));
     }
 
-    // Notes display in their stored order (drag to reorder); no automatic sort
+    // Group pinned notes first while preserving drag order inside each group.
+    const pinnedNotes = [];
+    const unpinnedNotes = [];
+    notes.forEach(note => {
+        if (note.pinned) pinnedNotes.push(note);
+        else unpinnedNotes.push(note);
+    });
+    notes = [...pinnedNotes, ...unpinnedNotes];
 
     if (notes.length === 0 && !state.searchQuery) {
         notesList.innerHTML = `
@@ -400,13 +462,19 @@ function renderNotes() {
         }
 
         return `
-      <div class="note-card ${note.pinned ? 'pinned' : ''}" data-note-id="${note.id}">
+      <div class="note-card ${note.pinned ? 'pinned' : ''} ${note.favourite ? 'favourite' : ''}" data-note-id="${note.id}">
         <div class="note-card-header">
           <div class="note-drag-handle" title="Drag to reorder"><svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor"><circle cx="2.5" cy="2.5" r="1.2"/><circle cx="7.5" cy="2.5" r="1.2"/><circle cx="2.5" cy="7" r="1.2"/><circle cx="7.5" cy="7" r="1.2"/><circle cx="2.5" cy="11.5" r="1.2"/><circle cx="7.5" cy="11.5" r="1.2"/></svg></div>
           <span class="note-timestamp">${formatDate(note.updatedAt)}</span>
-          <button class="note-pin-btn ${note.pinned ? 'pinned' : ''}" data-note-id="${note.id}" title="${note.pinned ? 'Unpin' : 'Pin'}">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="${note.pinned ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2">
+          <button class="note-favourite-btn ${note.favourite ? 'favourited' : ''}" data-note-id="${note.id}" title="${note.favourite ? 'Remove from favourites' : 'Add to favourites'}">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="${note.favourite ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2">
               <path d="M12 2l3 9h9l-7.5 5.5L19 26l-7-5.5L5 26l2.5-9.5L0 11h9z"/>
+            </svg>
+          </button>
+          <button class="note-pin-btn ${note.pinned ? 'pinned' : ''}" data-note-id="${note.id}" title="${note.pinned ? 'Unpin from top' : 'Pin to top'}">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="${note.pinned ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2">
+              <path d="M12 17v5"/>
+              <path d="M8 3h8l-2 6v4l2 2H8l2-2V9z"/>
             </svg>
           </button>
         </div>
@@ -585,6 +653,20 @@ function attachNoteEvents() {
         autoResize(editor);
     });
 
+    notesList.querySelectorAll('.note-favourite-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const noteId = btn.dataset.noteId;
+            const folder = state.folders.find(f => f.id === state.currentFolderId);
+            if (!folder) return;
+            const note = folder.notes.find(n => n.id === noteId);
+            if (!note) return;
+            normalizeNoteFlags(note);
+            note.favourite = !note.favourite;
+            save();
+            renderNotes();
+        });
+    });
+
     notesList.querySelectorAll('.note-pin-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const noteId = btn.dataset.noteId;
@@ -592,6 +674,7 @@ function attachNoteEvents() {
             if (!folder) return;
             const note = folder.notes.find(n => n.id === noteId);
             if (!note) return;
+            normalizeNoteFlags(note);
             note.pinned = !note.pinned;
             save();
             renderNotes();
@@ -721,6 +804,12 @@ function attachNoteEvents() {
                 // Reorder: move source note to this position
                 const folder = state.folders.find(f => f.id === state.currentFolderId);
                 if (!folder) return;
+                const srcNote = folder.notes.find(n => n.id === dragSourceNoteId);
+                const tgtNote = folder.notes.find(n => n.id === noteId);
+                if (!srcNote || !tgtNote) return;
+                normalizeNoteFlags(srcNote);
+                normalizeNoteFlags(tgtNote);
+                if (srcNote.pinned !== tgtNote.pinned) return;
                 const srcIdx = folder.notes.findIndex(n => n.id === dragSourceNoteId);
                 const tgtIdx = folder.notes.findIndex(n => n.id === noteId);
                 if (srcIdx === -1 || tgtIdx === -1) return;
@@ -1101,10 +1190,136 @@ function showNoteSettings(anchorBtn, noteId) {
     });
 }
 
+// ===== Settings View =====
+const DEFAULT_TOGGLE_SHORTCUT = 'CommandOrControl+Shift+S';
+let isRecordingShortcut = false;
+
+function acceleratorToDisplay(accel) {
+    if (!accel) return '';
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    return accel
+        .replace(/CommandOrControl/g, isMac ? '⌘' : 'Ctrl')
+        .replace(/Command/g, '⌘')
+        .replace(/Control/g, 'Ctrl')
+        .replace(/Shift/g, isMac ? '⇧' : 'Shift')
+        .replace(/Alt/g, isMac ? '⌥' : 'Alt')
+        .replace(/\+/g, ' + ');
+}
+
+async function showSettings() {
+    previousView = { view: state.currentView, folderId: state.currentFolderId };
+    state.currentView = 'settings';
+
+    topTitle.textContent = 'Settings';
+    btnBack.classList.remove('hidden');
+    folderListView.classList.add('hidden');
+    notesView.classList.add('hidden');
+    settingsView.classList.remove('hidden');
+
+    const currentShortcut = await window.electronAPI.getToggleShortcut();
+    shortcutDisplay.textContent = acceleratorToDisplay(currentShortcut);
+    shortcutDisplay.dataset.accelerator = currentShortcut;
+    shortcutError.classList.add('hidden');
+    stopRecording();
+}
+
+function startRecording() {
+    isRecordingShortcut = true;
+    shortcutRecorder.classList.add('recording');
+    shortcutDisplay.textContent = 'Press key combination...';
+    shortcutError.classList.add('hidden');
+}
+
+function stopRecording() {
+    isRecordingShortcut = false;
+    shortcutRecorder.classList.remove('recording');
+}
+
+function buildAccelerator(e) {
+    const parts = [];
+    if (e.metaKey || e.ctrlKey) parts.push('CommandOrControl');
+    if (e.shiftKey) parts.push('Shift');
+    if (e.altKey) parts.push('Alt');
+
+    const ignoredKeys = ['Meta', 'Control', 'Shift', 'Alt', 'Dead'];
+    if (ignoredKeys.includes(e.key)) return null;
+
+    let key = e.key;
+    if (key === ' ') key = 'Space';
+    else if (key === 'Escape') return 'Escape';
+    else if (key.length === 1) key = key.toUpperCase();
+    else if (key.startsWith('Arrow')) key = key;
+    else if (/^F\d+$/.test(key)) { /* F-keys are fine */ }
+    else key = key.charAt(0).toUpperCase() + key.slice(1);
+
+    if (parts.length === 0) return null;
+
+    parts.push(key);
+    return parts.join('+');
+}
+
+shortcutRecorder.addEventListener('click', () => {
+    if (!isRecordingShortcut) startRecording();
+});
+
+shortcutRecorder.addEventListener('keydown', async (e) => {
+    if (!isRecordingShortcut) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (e.key === 'Escape') {
+        stopRecording();
+        shortcutDisplay.textContent = acceleratorToDisplay(shortcutDisplay.dataset.accelerator);
+        return;
+    }
+
+    const accelerator = buildAccelerator(e);
+    if (!accelerator) return;
+
+    shortcutDisplay.textContent = acceleratorToDisplay(accelerator);
+
+    const result = await window.electronAPI.setToggleShortcut(accelerator);
+    if (result.success) {
+        shortcutDisplay.dataset.accelerator = accelerator;
+        shortcutError.classList.add('hidden');
+        stopRecording();
+    } else {
+        shortcutError.textContent = result.error;
+        shortcutError.classList.remove('hidden');
+        shortcutDisplay.textContent = acceleratorToDisplay(shortcutDisplay.dataset.accelerator);
+        stopRecording();
+    }
+});
+
+btnResetShortcut.addEventListener('click', async () => {
+    const result = await window.electronAPI.setToggleShortcut(DEFAULT_TOGGLE_SHORTCUT);
+    if (result.success) {
+        shortcutDisplay.textContent = acceleratorToDisplay(DEFAULT_TOGGLE_SHORTCUT);
+        shortcutDisplay.dataset.accelerator = DEFAULT_TOGGLE_SHORTCUT;
+        shortcutError.classList.add('hidden');
+    }
+});
+
+btnSettings.addEventListener('click', () => {
+    if (state.currentView === 'settings') {
+        if (previousView) {
+            state.currentView = previousView.view;
+            state.currentFolderId = previousView.folderId;
+            previousView = null;
+        } else {
+            state.currentView = 'folders';
+        }
+        renderCurrentView();
+    } else {
+        showSettings();
+    }
+});
+
 // ===== Render Router =====
 function renderCurrentView() {
     if (state.currentView === 'folders') renderFolders();
     else if (state.currentView === 'notes') renderNotes();
+    else if (state.currentView === 'settings') showSettings();
 }
 
 // ===== Initialize =====

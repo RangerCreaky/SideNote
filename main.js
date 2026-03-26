@@ -1,11 +1,13 @@
-const { app, BrowserWindow, ipcMain, screen, dialog, Tray, Menu, nativeImage, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, dialog, Tray, Menu, nativeImage, shell, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
 let mainWindow;
 let tray;
 let isExpanded = false;
+let currentToggleAccelerator = null;
 
+const DEFAULT_TOGGLE_SHORTCUT = 'CommandOrControl+Shift+S';
 const COLLAPSED_WIDTH = 16;
 const DEFAULT_EXPANDED_WIDTH = 400;
 const MIN_EXPANDED_WIDTH = 260;
@@ -67,7 +69,7 @@ class SimpleStore {
 
 const store = new SimpleStore({
   folders: [],
-  settings: { defaultFontSize: 13, expandedWidth: DEFAULT_EXPANDED_WIDTH }
+  settings: { defaultFontSize: 13, expandedWidth: DEFAULT_EXPANDED_WIDTH, toggleShortcut: DEFAULT_TOGGLE_SHORTCUT }
 });
 
 function getWindowBounds(expanded) {
@@ -175,6 +177,27 @@ function createTray() {
   tray.setContextMenu(contextMenu);
 }
 
+function registerToggleShortcut(accelerator) {
+  if (currentToggleAccelerator) {
+    globalShortcut.unregister(currentToggleAccelerator);
+    currentToggleAccelerator = null;
+  }
+  if (!accelerator) return false;
+  try {
+    const success = globalShortcut.register(accelerator, () => {
+      if (isExpanded) collapseWindow();
+      else expandWindow();
+    });
+    if (success) {
+      currentToggleAccelerator = accelerator;
+    }
+    return success;
+  } catch (e) {
+    console.error('Failed to register shortcut:', e);
+    return false;
+  }
+}
+
 function expandWindow() {
   if (isExpanded) return;
   isExpanded = true;
@@ -234,6 +257,22 @@ ipcMain.handle('write-file', async (event, filePath, content) => {
 
 ipcMain.handle('get-expanded-state', () => isExpanded);
 
+ipcMain.handle('get-toggle-shortcut', () => {
+  return store.get('settings.toggleShortcut') || DEFAULT_TOGGLE_SHORTCUT;
+});
+
+ipcMain.handle('set-toggle-shortcut', (event, accelerator) => {
+  const success = registerToggleShortcut(accelerator);
+  if (success) {
+    store.set('settings.toggleShortcut', accelerator);
+    return { success: true };
+  }
+  // Re-register the previous shortcut on failure
+  const previous = store.get('settings.toggleShortcut') || DEFAULT_TOGGLE_SHORTCUT;
+  registerToggleShortcut(previous);
+  return { success: false, error: 'Could not register shortcut. It may conflict with another application.' };
+});
+
 ipcMain.on('resize-window', (event, newWidth) => {
   if (!isExpanded) return;
   const clamped = Math.max(MIN_EXPANDED_WIDTH, Math.min(MAX_EXPANDED_WIDTH, Math.round(newWidth)));
@@ -246,6 +285,12 @@ ipcMain.on('resize-window', (event, newWidth) => {
 app.whenReady().then(() => {
   store.init(app.getPath('userData'));
   createWindow();
+  const shortcut = store.get('settings.toggleShortcut') || DEFAULT_TOGGLE_SHORTCUT;
+  registerToggleShortcut(shortcut);
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 });
 
 app.on('window-all-closed', () => {
