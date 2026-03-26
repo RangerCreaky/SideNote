@@ -18,6 +18,20 @@ let dragSourceNoteId = null;
 // ===== Storage via IPC =====
 async function loadData() {
     state.folders = (await window.electronAPI.storeGet('folders')) || [];
+    let migrated = false;
+    state.folders.forEach(folder => {
+        folder.notes.forEach(note => {
+            if (typeof note.favorite !== 'boolean') {
+                note.favorite = false;
+                migrated = true;
+            }
+            if (typeof note.pinned !== 'boolean') {
+                note.pinned = false;
+                migrated = true;
+            }
+        });
+    });
+    if (migrated) await save();
 }
 
 async function save() {
@@ -108,7 +122,13 @@ const expandedPanel = document.getElementById('expanded-panel');
 const topTitle = document.getElementById('top-title');
 const btnBack = document.getElementById('btn-back');
 const btnCollapse = document.getElementById('btn-collapse');
+const btnShortcutSettings = document.getElementById('btn-shortcut-settings');
 const btnSearchToggle = document.getElementById('btn-search-toggle');
+const shortcutSettingsBar = document.getElementById('shortcut-settings-bar');
+const shortcutInput = document.getElementById('shortcut-input');
+const btnShortcutSave = document.getElementById('btn-shortcut-save');
+const btnShortcutCancel = document.getElementById('btn-shortcut-cancel');
+const shortcutFeedback = document.getElementById('shortcut-feedback');
 const searchBar = document.getElementById('search-bar');
 const searchInput = document.getElementById('search-input');
 const folderListView = document.getElementById('folder-list-view');
@@ -145,6 +165,8 @@ let isResizing = false;
 let resizeStartX = 0;
 let resizeStartWidth = 0;
 let pendingResize = false;
+let shortcutSettingsVisible = false;
+let currentToggleShortcut = '';
 
 resizeHandle.addEventListener('mousedown', (e) => {
     isResizing = true;
@@ -172,6 +194,79 @@ document.addEventListener('mouseup', () => {
     pendingResize = false;
     resizeHandle.classList.remove('resizing');
     document.body.style.cursor = '';
+});
+
+// ===== Toggle Shortcut Settings =====
+function setShortcutFeedback(message, tone = '') {
+    shortcutFeedback.textContent = message || '';
+    shortcutFeedback.classList.remove('success', 'error');
+    if (tone) shortcutFeedback.classList.add(tone);
+}
+
+function showShortcutSettings() {
+    shortcutSettingsVisible = true;
+    shortcutSettingsBar.classList.remove('hidden');
+    shortcutInput.value = currentToggleShortcut || '';
+    setShortcutFeedback('Use Electron accelerator format. Example: CommandOrControl+Shift+S');
+    shortcutInput.focus();
+    shortcutInput.select();
+}
+
+function hideShortcutSettings() {
+    shortcutSettingsVisible = false;
+    shortcutSettingsBar.classList.add('hidden');
+    shortcutInput.value = currentToggleShortcut || '';
+    setShortcutFeedback('');
+}
+
+async function loadToggleShortcutSetting() {
+    try {
+        const shortcut = await window.electronAPI.getToggleShortcut();
+        currentToggleShortcut = shortcut || 'CommandOrControl+Shift+S';
+    } catch (err) {
+        currentToggleShortcut = 'CommandOrControl+Shift+S';
+    }
+}
+
+async function saveToggleShortcut() {
+    const candidate = shortcutInput.value.trim();
+    if (!candidate) {
+        setShortcutFeedback('Shortcut cannot be empty.', 'error');
+        return;
+    }
+
+    const result = await window.electronAPI.setToggleShortcut(candidate);
+    if (result && result.ok) {
+        currentToggleShortcut = result.shortcut;
+        shortcutInput.value = result.shortcut;
+        setShortcutFeedback(`Saved: ${result.shortcut}`, 'success');
+        return;
+    }
+
+    setShortcutFeedback((result && result.message) || 'Could not set shortcut.', 'error');
+}
+
+btnShortcutSettings.addEventListener('click', () => {
+    if (shortcutSettingsVisible) hideShortcutSettings();
+    else showShortcutSettings();
+});
+
+btnShortcutSave.addEventListener('click', () => {
+    saveToggleShortcut();
+});
+
+btnShortcutCancel.addEventListener('click', () => {
+    hideShortcutSettings();
+});
+
+shortcutInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        saveToggleShortcut();
+    } else if (e.key === 'Escape') {
+        e.preventDefault();
+        hideShortcutSettings();
+    }
 });
 
 // ===== Search =====
@@ -235,6 +330,7 @@ function addNote() {
         id: generateId(),
         content: '',
         pinned: false,
+        favorite: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         colorTag: NOTE_COLORS[folder.notes.length % NOTE_COLORS.length],
@@ -377,6 +473,8 @@ function renderNotes() {
     notesList.innerHTML = notes.map(note => {
         const wc = wordCount(note.content);
         const isEditing = state.editingNoteIds.has(note.id);
+        const isFavorited = !!note.favorite;
+        const isPinned = !!note.pinned;
 
         // Build the content area: either editor (textarea) or rendered preview
         let contentHtml;
@@ -400,13 +498,19 @@ function renderNotes() {
         }
 
         return `
-      <div class="note-card ${note.pinned ? 'pinned' : ''}" data-note-id="${note.id}">
+      <div class="note-card ${isPinned ? 'pinned' : ''}" data-note-id="${note.id}">
         <div class="note-card-header">
           <div class="note-drag-handle" title="Drag to reorder"><svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor"><circle cx="2.5" cy="2.5" r="1.2"/><circle cx="7.5" cy="2.5" r="1.2"/><circle cx="2.5" cy="7" r="1.2"/><circle cx="7.5" cy="7" r="1.2"/><circle cx="2.5" cy="11.5" r="1.2"/><circle cx="7.5" cy="11.5" r="1.2"/></svg></div>
           <span class="note-timestamp">${formatDate(note.updatedAt)}</span>
-          <button class="note-pin-btn ${note.pinned ? 'pinned' : ''}" data-note-id="${note.id}" title="${note.pinned ? 'Unpin' : 'Pin'}">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="${note.pinned ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2">
+          <button class="note-favorite-btn ${isFavorited ? 'favorited' : ''}" data-note-id="${note.id}" title="${isFavorited ? 'Unfavorite' : 'Favorite'}">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="${isFavorited ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2">
               <path d="M12 2l3 9h9l-7.5 5.5L19 26l-7-5.5L5 26l2.5-9.5L0 11h9z"/>
+            </svg>
+          </button>
+          <button class="note-pin-btn ${isPinned ? 'pinned' : ''}" data-note-id="${note.id}" title="${isPinned ? 'Unpin' : 'Pin'}">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 17v5"/>
+              <path d="M5 3h14l-2 6v3l2 2H5l2-2V9z"/>
             </svg>
           </button>
         </div>
@@ -583,6 +687,19 @@ function attachNoteEvents() {
         });
 
         autoResize(editor);
+    });
+
+    notesList.querySelectorAll('.note-favorite-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const noteId = btn.dataset.noteId;
+            const folder = state.folders.find(f => f.id === state.currentFolderId);
+            if (!folder) return;
+            const note = folder.notes.find(n => n.id === noteId);
+            if (!note) return;
+            note.favorite = !note.favorite;
+            save();
+            renderNotes();
+        });
     });
 
     notesList.querySelectorAll('.note-pin-btn').forEach(btn => {
@@ -794,6 +911,13 @@ document.addEventListener('click', (e) => {
     if (!formatDropdown.contains(e.target) && !e.target.closest('.btn-format-toggle')) hideFormatDropdown();
     const sd = document.querySelector('.settings-dropdown');
     if (sd && !sd.contains(e.target) && !e.target.closest('.btn-note-settings')) sd.remove();
+    if (
+        shortcutSettingsVisible &&
+        !shortcutSettingsBar.contains(e.target) &&
+        !e.target.closest('#btn-shortcut-settings')
+    ) {
+        hideShortcutSettings();
+    }
 });
 
 // ===== Rename Folder =====
@@ -1110,6 +1234,7 @@ function renderCurrentView() {
 // ===== Initialize =====
 async function init() {
     await loadData();
+    await loadToggleShortcutSetting();
     const expanded = await window.electronAPI.getExpandedState();
     if (expanded) {
         collapsedStrip.classList.add('hidden');

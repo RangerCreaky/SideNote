@@ -260,6 +260,78 @@ body {
   color: var(--text-muted);
 }
 
+/* ===== Shortcut Settings Bar ===== */
+.shortcut-settings-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.shortcut-settings-bar label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.shortcut-settings-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shortcut-settings-controls input {
+  flex: 1;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  padding: 7px 9px;
+  outline: none;
+}
+
+.shortcut-settings-controls input:focus {
+  border-color: var(--accent-secondary);
+}
+
+.btn-shortcut-action {
+  border: 1px solid var(--border-primary);
+  background: var(--accent-secondary);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-shortcut-action.secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.btn-shortcut-action:hover {
+  filter: brightness(1.08);
+}
+
+.shortcut-feedback {
+  min-height: 16px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.shortcut-feedback.success {
+  color: #3fb950;
+}
+
+.shortcut-feedback.error {
+  color: #f85149;
+}
+
 /* ===== Content Area ===== */
 .content-area {
   flex: 1;
@@ -491,6 +563,29 @@ body {
   align-items: center;
   justify-content: center;
   transition: all var(--transition-fast);
+}
+
+.note-favorite-btn {
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.note-favorite-btn:hover {
+  color: var(--accent-primary);
+  background: rgba(233, 69, 96, 0.12);
+}
+
+.note-favorite-btn.favorited {
+  color: var(--accent-primary);
 }
 
 .note-pin-btn:hover {
