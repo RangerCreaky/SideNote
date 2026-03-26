@@ -365,7 +365,7 @@ function renderFolders() {
           </svg>
         </div>
         <div class="folder-info">
-          <div class="folder-name">${escapeHtml(folder.name)}</div>
+          <div class="folder-name">${state.searchQuery ? highlightInHtml(escapeHtml(folder.name), state.searchQuery) : escapeHtml(folder.name)}</div>
           <div class="folder-count">${noteCount} note${noteCount !== 1 ? 's' : ''}</div>
         </div>
         <button class="btn-icon folder-menu-btn" data-folder-id="${folder.id}" title="Options">
@@ -553,7 +553,7 @@ function toggleCheckbox(noteId, checkboxIndex) {
     // Re-render the preview in place
     const preview = document.querySelector(`.note-preview[data-note-id="${noteId}"]`);
     if (preview) {
-        preview.innerHTML = renderMarkdown(note.content);
+        preview.innerHTML = state.searchQuery ? highlightInHtml(renderMarkdown(note.content), state.searchQuery) : renderMarkdown(note.content);
 
         // Update word count and timestamp
         const card = preview.closest('.note-card');
