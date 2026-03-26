@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SideNote</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="../node_modules/marked/lib/marked.umd.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+
+<body>
+  <div id="app">
+    <!-- Collapsed strip -->
+    <div id="collapsed-strip" class="collapsed-strip">
+      <div class="strip-indicator"></div>
+      <div class="strip-dots">
+        <span></span><span></span><span></span>
+      </div>
+    </div>
+
+    <!-- Expanded panel -->
+    <div id="expanded-panel" class="expanded-panel hidden">
+      <div id="resize-handle" class="resize-handle" title="Drag to resize"></div>
+      <!-- Top bar -->
+      <div id="top-bar" class="top-bar">
+        <button id="btn-back" class="btn-icon hidden" title="Back">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+        </button>
+        <h1 id="top-title" class="top-title">SideNote</h1>
+        <div class="top-bar-actions">
+          <button id="btn-shortcut-settings" class="btn-icon" title="Shortcut Settings">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="6" width="18" height="12" rx="2" />
+              <path d="M7 10h.01M10 10h.01M13 10h.01M16 10h.01M7 14h4" />
+            </svg>
+          </button>
+          <button id="btn-search-toggle" class="btn-icon" title="Search (Cmd+F)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+          </button>
+          <button id="btn-collapse" class="btn-icon" title="Collapse">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Shortcut settings -->
+      <div id="shortcut-settings-bar" class="shortcut-settings-bar hidden">
+        <label for="shortcut-input">Toggle Shortcut</label>
+        <div class="shortcut-settings-controls">
+          <input type="text" id="shortcut-input" placeholder="CommandOrControl+Shift+S" spellcheck="false" />
+          <button id="btn-shortcut-save" class="btn-shortcut-action">Save</button>
+          <button id="btn-shortcut-cancel" class="btn-shortcut-action secondary">Cancel</button>
+        </div>
+        <div id="shortcut-feedback" class="shortcut-feedback"></div>
+      </div>
+
+      <!-- Search bar -->
+      <div id="search-bar" class="search-bar hidden">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+        <input type="text" id="search-input" placeholder="Search notes..." />
+      </div>
+
+      <!-- Content area -->
+      <div id="content-area" class="content-area">
+        <!-- Folder list view -->
+        <div id="folder-list-view" class="view">
+          <div id="folder-list" class="folder-list"></div>
+          <button id="btn-add-folder" class="btn-add" title="New Folder">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            <span>New Folder</span>
+          </button>
+        </div>
+
+        <!-- Notes view (inside a folder) -->
+        <div id="notes-view" class="view hidden">
+          <div id="notes-list" class="notes-list"></div>
+          <button id="btn-add-note" class="btn-add" title="New Note (Cmd+N)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            <span>New Note</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Context menu -->
+    <div id="context-menu" class="context-menu hidden">
+      <button class="context-item" data-action="rename">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 20h9" />
+          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+        </svg>
+        Rename
+      </button>
+      <button class="context-item" data-action="delete">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6" />
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+        </svg>
+        Delete
+      </button>
+    </div>
+
+    <!-- Aa Formatting Dropdown -->
+    <div id="format-dropdown" class="format-dropdown hidden">
+      <button class="format-item" data-format="todo">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <path d="M9 12l2 2 4-4" />
+        </svg>
+        <span>Todo</span><kbd>⌘⇧T</kbd>
+      </button>
+      <button class="format-item" data-format="picture">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <circle cx="8.5" cy="8.5" r="1.5" />
+          <polyline points="21 15 16 10 5 21" />
+        </svg>
+        <span>Picture</span><kbd>⌘⇧I</kbd>
+      </button>
+      <button class="format-item" data-format="link">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+        </svg>
+        <span>Link</span><kbd>⌘K</kbd>
+      </button>
+      <div class="format-divider"></div>
+      <button class="format-item" data-format="header">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 12h16" />
+          <path d="M4 6h16" />
+        </svg>
+        <span>Header</span><kbd>⌘⇧H</kbd>
+      </button>
+      <button class="format-item" data-format="quote">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path
+            d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V21z" />
+        </svg>
+        <span>Quote</span><kbd>⌘⇧'</kbd>
+      </button>
+      <div class="format-divider"></div>
+      <button class="format-item" data-format="bold">
+        <strong style="font-size: 14px;">B</strong>
+        <span>Bold</span><kbd>⌘B</kbd>
+      </button>
+      <button class="format-item" data-format="italic">
+        <em style="font-size: 14px;">I</em>
+        <span>Italic</span><kbd>⌘I</kbd>
+      </button>
+      <button class="format-item" data-format="highlight">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L2 7l10 5 10-5-10-5z" />
+          <path d="M2 17l10 5 10-5" />
+        </svg>
+        <span>Highlight</span><kbd>⌘⇧M</kbd>
+      </button>
+      <button class="format-item" data-format="strike">
+        <s style="font-size: 14px;">S</s>
+        <span>Strikethrough</span><kbd>⌘⇧X</kbd>
+      </button>
+      <div class="format-divider"></div>
+      <button class="format-item" data-format="list">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <line x1="8" y1="6" x2="21" y2="6" />
+          <line x1="8" y1="12" x2="21" y2="12" />
+          <line x1="8" y1="18" x2="21" y2="18" />
+          <line x1="3" y1="6" x2="3.01" y2="6" />
+          <line x1="3" y1="12" x2="3.01" y2="12" />
+          <line x1="3" y1="18" x2="3.01" y2="18" />
+        </svg>
+        <span>List</span><kbd>⌘⇧L</kbd>
+      </button>
+      <button class="format-item" data-format="ordered_list">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <line x1="10" y1="6" x2="21" y2="6" />
+          <line x1="10" y1="12" x2="21" y2="12" />
+          <line x1="10" y1="18" x2="21" y2="18" />
+          <path d="M4 6h1v4" />
+          <path d="M4 10h2" />
+          <path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" />
+        </svg>
+        <span>Ordered List</span><kbd>⌘⇧O</kbd>
+      </button>
+      <button class="format-item" data-format="code">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="16 18 22 12 16 6" />
+          <polyline points="8 6 2 12 8 18" />
+        </svg>
+        <span>Code</span><kbd>⌘E</kbd>
+      </button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+
+</html>
