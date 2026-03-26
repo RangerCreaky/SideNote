@@ -36,6 +36,13 @@
         </button>
         <h1 id="top-title" class="top-title">SideNote</h1>
         <div class="top-bar-actions">
+          <button id="btn-shortcut-settings" class="btn-icon" title="Shortcut Settings">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="6" width="18" height="12" rx="2" />
+              <path d="M7 10h.01M10 10h.01M13 10h.01M16 10h.01M7 14h4" />
+            </svg>
+          </button>
           <button id="btn-search-toggle" class="btn-icon" title="Search (Cmd+F)">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
               stroke-linecap="round" stroke-linejoin="round">
@@ -50,6 +57,17 @@
             </svg>
           </button>
         </div>
+      </div>
+
+      <!-- Shortcut settings -->
+      <div id="shortcut-settings-bar" class="shortcut-settings-bar hidden">
+        <label for="shortcut-input">Toggle Shortcut</label>
+        <div class="shortcut-settings-controls">
+          <input type="text" id="shortcut-input" placeholder="CommandOrControl+Shift+S" spellcheck="false" />
+          <button id="btn-shortcut-save" class="btn-shortcut-action">Save</button>
+          <button id="btn-shortcut-cancel" class="btn-shortcut-action secondary">Cancel</button>
+        </div>
+        <div id="shortcut-feedback" class="shortcut-feedback"></div>
       </div>
 
       <!-- Search bar -->

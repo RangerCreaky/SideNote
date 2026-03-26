@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Persistent storage (via main process)
     storeGet: (key) => ipcRenderer.invoke('store-get', key),
     storeSet: (key, value) => ipcRenderer.invoke('store-set', key, value),
+    getToggleShortcut: () => ipcRenderer.invoke('get-toggle-shortcut'),
+    setToggleShortcut: (shortcut) => ipcRenderer.invoke('set-toggle-shortcut', shortcut),
 
     // File dialogs
     showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options),

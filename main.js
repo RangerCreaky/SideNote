@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, dialog, Tray, Menu, nativeImage, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, dialog, Tray, Menu, nativeImage, shell, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -10,8 +10,10 @@ const COLLAPSED_WIDTH = 16;
 const DEFAULT_EXPANDED_WIDTH = 400;
 const MIN_EXPANDED_WIDTH = 260;
 const MAX_EXPANDED_WIDTH = 800;
+const DEFAULT_TOGGLE_SHORTCUT = 'CommandOrControl+Shift+S';
 const ANIMATION_STEPS = 12;
 const ANIMATION_INTERVAL = 12;
+let registeredToggleShortcut = null;
 
 // ===== Simple JSON File Store =====
 class SimpleStore {
@@ -67,7 +69,11 @@ class SimpleStore {
 
 const store = new SimpleStore({
   folders: [],
-  settings: { defaultFontSize: 13, expandedWidth: DEFAULT_EXPANDED_WIDTH }
+  settings: {
+    defaultFontSize: 13,
+    expandedWidth: DEFAULT_EXPANDED_WIDTH,
+    toggleShortcut: DEFAULT_TOGGLE_SHORTCUT
+  }
 });
 
 function getWindowBounds(expanded) {
@@ -189,12 +195,76 @@ function collapseWindow() {
   animateWindow(COLLAPSED_WIDTH);
 }
 
+function toggleWindow() {
+  if (isExpanded) collapseWindow();
+  else expandWindow();
+}
+
+function unregisterCurrentShortcut() {
+  if (!registeredToggleShortcut) return;
+  globalShortcut.unregister(registeredToggleShortcut);
+  registeredToggleShortcut = null;
+}
+
+function registerToggleShortcut(accelerator) {
+  if (!accelerator || typeof accelerator !== 'string') {
+    return { ok: false, message: 'Shortcut is required.' };
+  }
+
+  const normalized = accelerator.trim();
+  if (!normalized) {
+    return { ok: false, message: 'Shortcut cannot be empty.' };
+  }
+
+  unregisterCurrentShortcut();
+  const registered = globalShortcut.register(normalized, toggleWindow);
+  if (!registered) {
+    return { ok: false, message: 'Shortcut is unavailable or invalid.' };
+  }
+
+  registeredToggleShortcut = normalized;
+  return { ok: true, shortcut: normalized };
+}
+
+function registerShortcutFromSettings() {
+  const savedShortcut = store.get('settings.toggleShortcut') || DEFAULT_TOGGLE_SHORTCUT;
+  const preferred = registerToggleShortcut(savedShortcut);
+  if (preferred.ok) {
+    store.set('settings.toggleShortcut', preferred.shortcut);
+    return preferred;
+  }
+
+  const fallback = registerToggleShortcut(DEFAULT_TOGGLE_SHORTCUT);
+  if (fallback.ok) {
+    store.set('settings.toggleShortcut', fallback.shortcut);
+    return fallback;
+  }
+
+  return { ok: false, message: 'Could not register any toggle shortcut.' };
+}
+
+function updateToggleShortcut(nextShortcut) {
+  if (!nextShortcut || typeof nextShortcut !== 'string') {
+    return { ok: false, message: 'Shortcut is required.' };
+  }
+
+  const previous = registeredToggleShortcut || store.get('settings.toggleShortcut') || DEFAULT_TOGGLE_SHORTCUT;
+  const attempt = registerToggleShortcut(nextShortcut);
+  if (!attempt.ok) {
+    // Best-effort restore of previous shortcut so app remains controllable.
+    registerToggleShortcut(previous);
+    return attempt;
+  }
+
+  store.set('settings.toggleShortcut', attempt.shortcut);
+  return { ok: true, shortcut: attempt.shortcut };
+}
+
 // ===== IPC Handlers =====
 ipcMain.on('expand', () => expandWindow());
 ipcMain.on('collapse', () => collapseWindow());
 ipcMain.on('toggle', () => {
-  if (isExpanded) collapseWindow();
-  else expandWindow();
+  toggleWindow();
 });
 
 // Storage IPC – renderer reads/writes via main process
@@ -233,6 +303,13 @@ ipcMain.handle('write-file', async (event, filePath, content) => {
 });
 
 ipcMain.handle('get-expanded-state', () => isExpanded);
+ipcMain.handle('get-toggle-shortcut', () => {
+  return store.get('settings.toggleShortcut') || registeredToggleShortcut || DEFAULT_TOGGLE_SHORTCUT;
+});
+
+ipcMain.handle('set-toggle-shortcut', (event, shortcut) => {
+  return updateToggleShortcut(shortcut);
+});
 
 ipcMain.on('resize-window', (event, newWidth) => {
   if (!isExpanded) return;
@@ -245,7 +322,12 @@ ipcMain.on('resize-window', (event, newWidth) => {
 
 app.whenReady().then(() => {
   store.init(app.getPath('userData'));
+  registerShortcutFromSettings();
   createWindow();
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 });
 
 app.on('window-all-closed', () => {
