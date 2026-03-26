@@ -89,6 +89,17 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function highlightInHtml(html, query) {
+    if (!query) return html;
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(escaped, 'gi');
+    return html.replace(/(<[^>]*>)|([^<>]+)/g, (match, tag, text) => {
+        if (tag) return tag;
+        if (text) return text.replace(regex, '<mark class="search-highlight">$&</mark>');
+        return match;
+    });
+}
+
 function renderMarkdown(text) {
     if (!text || !text.trim()) return '<p style="color:var(--text-muted);font-style:italic">Empty note — click to edit</p>';
     try {
@@ -456,7 +467,7 @@ function renderNotes() {
         } else {
             contentHtml = `
               <div class="note-preview" data-note-id="${note.id}">
-                ${renderMarkdown(note.content)}
+                ${highlightInHtml(renderMarkdown(note.content), state.searchQuery)}
               </div>
               <div class="note-preview-hint">click to edit</div>`;
         }
